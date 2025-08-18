@@ -1,258 +1,205 @@
 package token_balance
 
 import (
-	"context"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+
+	"ethclient_tutorial/contracts"
 )
 
-// ERC20 ABI for balanceOf function
-const erc20ABI = `[
-	{
-		"constant": true,
-		"inputs": [
-			{
-				"name": "_owner",
-				"type": "address"
-			}
-		],
-		"name": "balanceOf",
-		"outputs": [
-			{
-				"name": "balance",
-				"type": "uint256"
-			}
-		],
-		"payable": false,
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"constant": true,
-		"inputs": [],
-		"name": "decimals",
-		"outputs": [
-			{
-				"name": "",
-				"type": "uint8"
-			}
-		],
-		"payable": false,
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"constant": true,
-		"inputs": [],
-		"name": "symbol",
-		"outputs": [
-			{
-				"name": "",
-				"type": "string"
-			}
-		],
-		"payable": false,
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"constant": true,
-		"inputs": [],
-		"name": "name",
-		"outputs": [
-			{
-				"name": "",
-				"type": "string"
-			}
-		],
-		"payable": false,
-		"stateMutability": "view",
-		"type": "function"
-	}
-]`
+// CheckTokenBalance 使用ABI绑定查询代币余额和基本信息
+func CheckTokenBalance(client *ethclient.Client, tokenAddress common.Address, holderAddress common.Address) {
+	fmt.Printf("\n=== 代币信息查询 (使用ABI绑定) ===\n")
+	fmt.Printf("代币合约地址: %s\n", tokenAddress.Hex())
+	fmt.Printf("持有者地址: %s\n", holderAddress.Hex())
 
-// GetTokenBalance 查询ERC20代币余额
-func GetTokenBalance(client *ethclient.Client, tokenContract, walletAddress common.Address) (*big.Int, error) {
-	//// 方法1: 使用ABI调用
-	//balance, err := getTokenBalanceWithABI(client, tokenContract, walletAddress)
-	//if err != nil {
-	//	// 如果ABI方法失败，尝试手动构造调用
-	//	fmt.Printf("ABI方法失败，尝试手动构造: %v\n", err)
-	//	return getTokenBalanceManual(client, tokenContract, walletAddress)
-	//}
-	//return balance, nil
-	return getTokenBalanceManual(client, tokenContract, walletAddress)
-
-}
-
-// getTokenBalanceWithABI 使用ABI查询代币余额
-func getTokenBalanceWithABI(client *ethclient.Client, tokenContract, walletAddress common.Address) (*big.Int, error) {
-	// 解析ABI
-	contractABI, err := abi.JSON(strings.NewReader(erc20ABI))
+	// 创建合约实例
+	instance, err := contracts.NewMYERC20(tokenAddress, client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %v", err)
+		fmt.Printf("❌ 创建合约实例失败: %v\n", err)
+		return
 	}
+	fmt.Printf("✓ 合约实例创建成功\n")
 
-	// 构造balanceOf调用数据
-	data, err := contractABI.Pack("balanceOf", walletAddress)
+	// 设置调用选项
+	callOpts := &bind.CallOpts{}
+
+	// 1. 查询代币名称
+	name, err := instance.Name(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack balanceOf data: %v", err)
+		fmt.Printf("❌ 查询代币名称失败: %v\n", err)
+	} else {
+		fmt.Printf("✓ 代币名称: %s\n", name)
 	}
 
-	// 调用合约
-	result, err := client.CallContract(context.Background(), ethereum.CallMsg{
-		To:   &tokenContract,
-		Data: data,
-	}, nil)
+	// 2. 查询代币符号
+	symbol, err := instance.Symbol(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call contract: %v", err)
+		fmt.Printf("❌ 查询代币符号失败: %v\n", err)
+	} else {
+		fmt.Printf("✓ 代币符号: %s\n", symbol)
 	}
 
-	// 解包结果
-	var balance *big.Int
-	err = contractABI.UnpackIntoInterface(&balance, "balanceOf", result)
+	// 3. 查询代币精度
+	decimals, err := instance.Decimals(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unpack result: %v", err)
+		fmt.Printf("❌ 查询代币精度失败: %v\n", err)
+	} else {
+		fmt.Printf("✓ 代币精度: %d\n", decimals)
 	}
 
-	return balance, nil
-}
-
-// getTokenBalanceManual 手动构造balanceOf调用
-func getTokenBalanceManual(client *ethclient.Client, tokenContract, walletAddress common.Address) (*big.Int, error) {
-	// balanceOf(address) 函数签名
-	balanceOfSignature := []byte("balanceOf(address)")
-	balanceOfHash := crypto.Keccak256Hash(balanceOfSignature)
-
-	// 构造调用数据: 4字节函数选择器 + 32字节地址参数
-	data := append(balanceOfHash[:4], common.LeftPadBytes(walletAddress.Bytes(), 32)...)
-
-	// 调用合约
-	result, err := client.CallContract(context.Background(), ethereum.CallMsg{
-		To:   &tokenContract,
-		Data: data,
-	}, nil)
+	// 4. 查询总供应量
+	totalSupply, err := instance.TotalSupply(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call contract manually: %v", err)
+		fmt.Printf("❌ 查询总供应量失败: %v\n", err)
+	} else {
+		fmt.Printf("✓ 总供应量: %s (原始值)\n", totalSupply.String())
+		if decimals > 0 {
+			readable := TokenFromWei(totalSupply, int(decimals))
+			fmt.Printf("✓ 总供应量: %s %s\n", readable, symbol)
+		}
 	}
 
-	// 检查返回数据长度
-	if len(result) != 32 {
-		return nil, fmt.Errorf("unexpected result length: got %d, expected 32", len(result))
+	// 5. 查询指定地址的余额
+	balance, err := instance.BalanceOf(callOpts, holderAddress)
+	if err != nil {
+		fmt.Printf("❌ 查询余额失败: %v\n", err)
+	} else {
+		fmt.Printf("✓ 原始余额: %s\n", balance.String())
+		if decimals > 0 {
+			readable := TokenFromWei(balance, int(decimals))
+			fmt.Printf("✓ 可读余额: %s %s\n", readable, symbol)
+		}
 	}
 
-	// 将结果转换为big.Int
-	balance := new(big.Int).SetBytes(result)
-	return balance, nil
+	// 6. 查询合约所有者（如果合约支持）
+	owner, err := instance.Owner(callOpts)
+	if err != nil {
+		fmt.Printf("⚠️  查询合约所有者失败: %v\n", err)
+	} else {
+		fmt.Printf("✓ 合约所有者: %s\n", owner.Hex())
+	}
+
+	// 7. 查询暂停状态（如果合约支持）
+	paused, err := instance.Paused(callOpts)
+	if err != nil {
+		fmt.Printf("⚠️  查询暂停状态失败: %v\n", err)
+	} else {
+		if paused {
+			fmt.Printf("⚠️  合约状态: 已暂停\n")
+		} else {
+			fmt.Printf("✓ 合约状态: 正常运行\n")
+		}
+	}
 }
 
 // GetTokenInfo 获取代币基本信息
-func GetTokenInfo(client *ethclient.Client, tokenContract common.Address) (name, symbol string, decimals uint8, err error) {
-	contractABI, err := abi.JSON(strings.NewReader(erc20ABI))
+func GetTokenInfo(client *ethclient.Client, tokenAddress common.Address) (*TokenInfo, error) {
+	// 创建合约实例
+	instance, err := contracts.NewMYERC20(tokenAddress, client)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("failed to parse ABI: %v", err)
+		return nil, fmt.Errorf("创建合约实例失败: %v", err)
 	}
 
-	// 获取代币名称
-	nameData, err := contractABI.Pack("name")
-	if err == nil {
-		result, err := client.CallContract(context.Background(), ethereum.CallMsg{
-			To:   &tokenContract,
-			Data: nameData,
-		}, nil)
-		if err == nil {
-			var tokenName string
-			contractABI.UnpackIntoInterface(&tokenName, "name", result)
-			name = tokenName
-		}
+	callOpts := &bind.CallOpts{}
+
+	// 获取代币基本信息
+	name, err := instance.Name(callOpts)
+	if err != nil {
+		return nil, fmt.Errorf("查询代币名称失败: %v", err)
 	}
 
-	// 获取代币符号
-	symbolData, err := contractABI.Pack("symbol")
-	if err == nil {
-		result, err := client.CallContract(context.Background(), ethereum.CallMsg{
-			To:   &tokenContract,
-			Data: symbolData,
-		}, nil)
-		if err == nil {
-			var tokenSymbol string
-			contractABI.UnpackIntoInterface(&tokenSymbol, "symbol", result)
-			symbol = tokenSymbol
-		}
+	symbol, err := instance.Symbol(callOpts)
+	if err != nil {
+		return nil, fmt.Errorf("查询代币符号失败: %v", err)
 	}
 
-	// 获取小数位数
-	decimalsData, err := contractABI.Pack("decimals")
-	if err == nil {
-		result, err := client.CallContract(context.Background(), ethereum.CallMsg{
-			To:   &tokenContract,
-			Data: decimalsData,
-		}, nil)
-		if err == nil {
-			var tokenDecimals uint8
-			contractABI.UnpackIntoInterface(&tokenDecimals, "decimals", result)
-			decimals = tokenDecimals
-		}
+	decimals, err := instance.Decimals(callOpts)
+	if err != nil {
+		return nil, fmt.Errorf("查询代币精度失败: %v", err)
 	}
 
-	return name, symbol, decimals, nil
+	totalSupply, err := instance.TotalSupply(callOpts)
+	if err != nil {
+		return nil, fmt.Errorf("查询总供应量失败: %v", err)
+	}
+
+	return &TokenInfo{
+		Address:     tokenAddress,
+		Name:        name,
+		Symbol:      symbol,
+		Decimals:    decimals,
+		TotalSupply: totalSupply,
+	}, nil
 }
 
-// FormatTokenBalance 格式化代币余额显示
-func FormatTokenBalance(balance *big.Int, decimals uint8) *big.Float {
-	if balance == nil {
-		return big.NewFloat(0)
-	}
-
-	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
-	balanceFloat := new(big.Float).SetInt(balance)
-	divisorFloat := new(big.Float).SetInt(divisor)
-
-	return new(big.Float).Quo(balanceFloat, divisorFloat)
-}
-
-// CheckTokenBalance 完整的代币余额查询函数
-func CheckTokenBalance(client *ethclient.Client, tokenContract, walletAddress common.Address) {
-	fmt.Printf("\n=== 查询代币余额 ===\n")
-	fmt.Printf("代币合约地址: %s\n", tokenContract.Hex())
-	fmt.Printf("钱包地址: %s\n", walletAddress.Hex())
-
-	// 获取代币信息
-	name, symbol, decimals, err := GetTokenInfo(client, tokenContract)
+// GetTokenBalance 获取指定地址的代币余额
+func GetTokenBalance(client *ethclient.Client, tokenAddress common.Address, holderAddress common.Address) (*big.Int, error) {
+	// 创建合约实例
+	instance, err := contracts.NewMYERC20(tokenAddress, client)
 	if err != nil {
-		fmt.Printf("Warning: 无法获取代币信息: %v\n", err)
-		decimals = 18 // 使用默认值
-		symbol = "TOKEN"
-	} else {
-		fmt.Printf("代币名称: %s (%s)\n", name, symbol)
-		fmt.Printf("小数位数: %d\n", decimals)
+		return nil, fmt.Errorf("创建合约实例失败: %v", err)
 	}
+
+	callOpts := &bind.CallOpts{}
 
 	// 查询余额
-	balance, err := GetTokenBalance(client, tokenContract, walletAddress)
+	balance, err := instance.BalanceOf(callOpts, holderAddress)
 	if err != nil {
-		fmt.Printf("❌ 查询余额失败: %v\n", err)
-		return
+		return nil, fmt.Errorf("查询余额失败: %v", err)
 	}
 
-	// 格式化并显示余额
-	formattedBalance := FormatTokenBalance(balance, decimals)
-	fmt.Printf("✓ 原始余额: %s wei\n", balance.String())
-	fmt.Printf("✓ 格式化余额: %s %s\n", formattedBalance.Text('f', 6), symbol)
+	return balance, nil
+}
 
-	// 检查余额是否为0
-	if balance.Cmp(big.NewInt(0)) == 0 {
-		fmt.Printf("⚠️  余额为0，可能的原因：\n")
-		fmt.Printf("   1. 地址确实没有该代币\n")
-		fmt.Printf("   2. 代币合约地址错误\n")
-		fmt.Printf("   3. 网络连接问题\n")
-		fmt.Printf("   4. 合约不是标准ERC20代币\n")
+// TokenInfo 代币信息结构体
+type TokenInfo struct {
+	Address     common.Address
+	Name        string
+	Symbol      string
+	Decimals    uint8
+	TotalSupply *big.Int
+}
+
+// TokenFromWei 将wei单位转换为代币单位（考虑精度）
+func TokenFromWei(wei *big.Int, decimals int) string {
+	if decimals == 0 {
+		return wei.String()
 	}
+
+	// 创建除数 (10^decimals)
+	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+
+	// 转换为浮点数进行除法运算
+	weiFloat := new(big.Float).SetInt(wei)
+	divisorFloat := new(big.Float).SetInt(divisor)
+	result := new(big.Float).Quo(weiFloat, divisorFloat)
+
+	// 格式化输出，保留6位小数
+	return result.Text('f', 6)
+}
+
+// TokenToWei 将代币单位转换为wei单位（考虑精度）
+func TokenToWei(amount float64, decimals int) *big.Int {
+	if decimals == 0 {
+		return big.NewInt(int64(amount))
+	}
+
+	// 创建乘数 (10^decimals)
+	multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+
+	// 将浮点数转换为big.Float
+	amountFloat := big.NewFloat(amount)
+	multiplierFloat := new(big.Float).SetInt(multiplier)
+
+	// 执行乘法
+	result := new(big.Float).Mul(amountFloat, multiplierFloat)
+
+	// 转换为big.Int
+	wei, _ := result.Int(nil)
+	return wei
 }
