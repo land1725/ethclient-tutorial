@@ -20,7 +20,7 @@ func CheckTokenBalance(client *ethclient.Client, tokenAddress common.Address, ho
 	// 创建合约实例
 	instance, err := contracts.NewMYERC20(tokenAddress, client)
 	if err != nil {
-		fmt.Printf("❌ 创建合约实例失败: %v\n", err)
+		fmt.Printf("❌ 创建合约实��失败: %v\n", err)
 		return
 	}
 	fmt.Printf("✓ 合约实例创建成功\n")
@@ -181,25 +181,4 @@ func TokenFromWei(wei *big.Int, decimals int) string {
 
 	// 格式化输出，保留6位小数
 	return result.Text('f', 6)
-}
-
-// TokenToWei 将代币单位转换为wei单位（考虑精度）
-func TokenToWei(amount float64, decimals int) *big.Int {
-	if decimals == 0 {
-		return big.NewInt(int64(amount))
-	}
-
-	// 创建乘数 (10^decimals)
-	multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
-
-	// 将浮点数转换为big.Float
-	amountFloat := big.NewFloat(amount)
-	multiplierFloat := new(big.Float).SetInt(multiplier)
-
-	// 执行乘法
-	result := new(big.Float).Mul(amountFloat, multiplierFloat)
-
-	// 转换为big.Int
-	wei, _ := result.Int(nil)
-	return wei
 }

@@ -11,6 +11,7 @@ import (
 	"ethclient_tutorial/block_query"
 	"ethclient_tutorial/block_subscription"
 	"ethclient_tutorial/config"
+	"ethclient_tutorial/contract_deployment"
 	"ethclient_tutorial/eth_transfer"
 	"ethclient_tutorial/receipt_query"
 	"ethclient_tutorial/token_balance"
@@ -72,13 +73,25 @@ func main() {
 
 	// 只有配置了私钥才演示转账功能
 	if cfg.TestPrivateKey != "" {
-		//fmt.Println("\n4. 转账功能演示:")
-		ethTransferDemo(client, cfg)
-		erc20TransferDemo(client, cfg)
+		// 合约部署演示
+		fmt.Println("\n5. 合约部署演示:")
+		deployedContractAddress, deployedSuccess := contractDeploymentDemo(client, cfg)
 
-		// 查询接收地址的代币余额
-		fmt.Println("\n5. 代币余额查询:")
-		checkRecipientTokenBalance(client, cfg)
+		// 转账功能演示
+		fmt.Println("\n6. 转账功能演示:")
+		ethTransferDemo(client, cfg)
+
+		// 只有合约部署成功才进行ERC20相关操作
+		if deployedSuccess {
+			fmt.Println("\n=== 使用新部署的合约进行ERC20操作 ===")
+			erc20TransferDemo(client, cfg, deployedContractAddress)
+
+			// 查询接收地址的代币余额
+			fmt.Println("\n7. 代币余额查询:")
+			checkRecipientTokenBalance(client, cfg, deployedContractAddress)
+		} else {
+			fmt.Println("\n⚠️ 由于合约部署失败，跳过所有ERC20代币相关功能")
+		}
 	} else {
 		fmt.Println("\n注意：要演示转账功能，请在 .env 文件中设置 TEST_PRIVATE_KEY")
 	}
@@ -122,7 +135,7 @@ func ethTransferDemo(client *ethclient.Client, cfg *config.Config) {
 	fmt.Printf("✅ ETH转账成功! TX Hash: %s\n", txHash.Hex())
 }
 
-func erc20TransferDemo(client *ethclient.Client, cfg *config.Config) {
+func erc20TransferDemo(client *ethclient.Client, cfg *config.Config, deployedContractAddress common.Address) {
 	toAddress := common.HexToAddress(cfg.TestRecipientAddress)
 	//打印接受地址
 	fmt.Printf("erc20TransferDemo 接收地址: %s\n", toAddress.Hex())
@@ -130,8 +143,8 @@ func erc20TransferDemo(client *ethclient.Client, cfg *config.Config) {
 	// 获取ERC20合约地址
 	var erc20Address common.Address
 
-	erc20Address = common.HexToAddress(cfg.ContractAddress)
-	fmt.Printf("✓ 使用配置的ERC20合约地址: %s\n", erc20Address.Hex())
+	erc20Address = deployedContractAddress
+	fmt.Printf("✓ 使用部署的ERC20合约地址: %s\n", erc20Address.Hex())
 
 	fmt.Printf("准备从配置的私钥地址转账 0.001 erc20 到 %s\n", cfg.TestRecipientAddress)
 	fmt.Println("注意：这只是演示，请确保使用测试网络和测试代币!")
@@ -156,11 +169,11 @@ func erc20TransferDemo(client *ethclient.Client, cfg *config.Config) {
 }
 
 // checkRecipientTokenBalance 查询接收地址的代币余额
-func checkRecipientTokenBalance(client *ethclient.Client, cfg *config.Config) {
+func checkRecipientTokenBalance(client *ethclient.Client, cfg *config.Config, deployedContractAddress common.Address) {
 	recipientAddress := common.HexToAddress(cfg.TestRecipientAddress)
 
 	// 获取ERC20合约地址
-	var erc20Address = common.HexToAddress(cfg.ContractAddress)
+	var erc20Address = deployedContractAddress
 
 	fmt.Printf("查询地址: %s\n", recipientAddress.Hex())
 	fmt.Printf("代币合约: %s\n", erc20Address.Hex())
@@ -174,7 +187,7 @@ func WeiToEther(wei *big.Int) *big.Float {
 	return new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(1e18))
 }
 
-// blockSubscriptionDemo 区块订阅演示
+// blockSubscriptionDemo 区块订阅演���
 func blockSubscriptionDemo(client *ethclient.Client) {
 	fmt.Println("=== 区块订阅演示 ===")
 
@@ -192,4 +205,27 @@ func blockSubscriptionDemo(client *ethclient.Client) {
 	fmt.Println("\n--- 监听下一个新区块 ---")
 	block := block_subscription.BlockSubscription(wsClient)
 	fmt.Printf("✅ 成功接收到新区块: #%d\n", block.NumberU64())
+}
+
+// contractDeploymentDemo 合约部署演示
+func contractDeploymentDemo(client *ethclient.Client, cfg *config.Config) (common.Address, bool) {
+	recipientAddress := common.HexToAddress(cfg.TestSendAddress)
+
+	fmt.Printf("准备部署 MYERC20 合约...\n")
+	fmt.Printf("部署者私钥对应的地址将成为合约所有者\n")
+	fmt.Printf("初始代币接收者: %s\n", recipientAddress.Hex())
+
+	contractAddress, txHash, err := contract_deployment.DeployContract(client, cfg.TestPrivateKey, recipientAddress)
+	if err != nil {
+		log.Printf("合约部署失败: %v", err)
+		return common.Address{}, false
+	}
+
+	fmt.Printf("✅ 合约部署成功!\n")
+	fmt.Printf("   合约地址: %s\n", contractAddress.Hex())
+	fmt.Printf("   部署交易哈希: %s\n", txHash.Hex())
+
+	// 更新配置中的合约地址以供后续使用
+	fmt.Printf("📝 建议将合约地址更新到 .env 文件中的 CONTRACT_ADDRESS\n")
+	return contractAddress, true
 }

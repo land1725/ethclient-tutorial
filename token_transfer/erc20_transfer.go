@@ -13,6 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+
+	"ethclient_tutorial/utils"
 )
 
 // ModernERC20Transfer 现代化的ERC20转账 - 手动构造哈希，使用EIP-1559
@@ -128,20 +130,27 @@ func ERC20Transfer(client *ethclient.Client, privateKeyHex string, toAddress com
 	}
 
 	fmt.Printf("✅ 交易发送成功: %s\n", signedTx.Hash().Hex())
-	return signedTx.Hash(), nil
-}
 
-// TokenToWei 将代币数量转换为最小单位
-func TokenToWei(amount float64, decimals int) *big.Int {
-	factor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
-	amountFloat := new(big.Float).Mul(big.NewFloat(amount), new(big.Float).SetInt(factor))
-	weiInt := new(big.Int)
-	amountFloat.Int(weiInt)
-	return weiInt
+	// 11. 等待交易确认
+	fmt.Println("\n--- 等待转账确认 ---")
+	status, err := utils.WaitForTransactionQuick(client, signedTx.Hash())
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("等待转账确认失败: %v", err)
+	}
+
+	if !status.Success {
+		return common.Hash{}, fmt.Errorf("转账交易执行失败")
+	}
+
+	fmt.Printf("✅ 转账已确认!\n")
+	fmt.Printf("   区块号: #%d\n", status.BlockNumber)
+	fmt.Printf("   Gas使用: %d\n", status.GasUsed)
+
+	return signedTx.Hash(), nil
 }
 
 // TransferERC20WithAmount 使用浮点数金额的便捷函数
 func TransferERC20WithAmount(client *ethclient.Client, privateKeyHex string, toAddress common.Address, tokenAddress common.Address, amount float64, decimals int) (common.Hash, error) {
-	tokenAmount := TokenToWei(amount, decimals)
+	tokenAmount := utils.TokenToWei(amount, decimals)
 	return ERC20Transfer(client, privateKeyHex, toAddress, tokenAddress, tokenAmount)
 }

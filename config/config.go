@@ -16,6 +16,7 @@ type Config struct {
 	EthereumWSURL        string
 	EthereumHTTPURL      string
 	TestPrivateKey       string
+	TestSendAddress      string
 	TestRecipientAddress string
 	ContractAddress      string
 	ContractABIPath      string
@@ -41,6 +42,7 @@ func LoadConfig() *Config {
 		EthereumWSURL:        getEnv("ETHEREUM_WS_URL", ""),
 		EthereumHTTPURL:      getEnv("ETHEREUM_HTTP_URL", ""),
 		TestPrivateKey:       getEnv("TEST_PRIVATE_KEY", ""),
+		TestSendAddress:      getEnv("TEST_SEND_ADDRESS", ""),
 		TestRecipientAddress: getEnv("TEST_RECIPIENT_ADDRESS", ""),
 		ContractAddress:      getEnv("CONTRACT_ADDRESS", ""),
 		ContractABIPath:      getEnv("CONTRACT_ABI_PATH", "./contracts/abi/"),

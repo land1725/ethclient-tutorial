@@ -45,5 +45,9 @@ Thumbs.db
 # Node modules (if any)
 node_modules/
 
+# Contract compilation artifacts
+contracts/compiled/
+contracts/package-lock.json
+
 # Dependency directories
 vendor/

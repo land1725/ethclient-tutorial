@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"ethclient_tutorial/contracts"
+	"ethclient_tutorial/utils"
 )
 
 // TransferERC20WithABI 使用ABI绑定进行EIP-1559 ERC20转账
@@ -50,7 +51,7 @@ func TransferERC20WithABI(client *ethclient.Client, privateKeyHex string, toAddr
 	fmt.Printf("✓ 代币精度: %d\n", decimals)
 
 	// 4. 转换代币数量
-	tokenAmount := TokenToWei(amount, int(decimals))
+	tokenAmount := utils.TokenToWei(amount, int(decimals))
 	fmt.Printf("✓ 转账数量: %s (原始: %.6f)\n", tokenAmount.String(), amount)
 
 	// 5. 获取当前nonce
@@ -118,9 +119,68 @@ func TransferERC20WithABI(client *ethclient.Client, privateKeyHex string, toAddr
 		return common.Hash{}, fmt.Errorf("转账交易失败: %v", err)
 	}
 
-	fmt.Printf("✅ ABI绑定ERC20转账成功!\n")
+	fmt.Printf("✅ ERC20转账交易提交成功!\n")
 	fmt.Printf("交易哈希: %s\n", tx.Hash().Hex())
 	fmt.Printf("交易类型: %d (EIP-1559)\n", tx.Type())
+
+	// 11. 等待交易确认
+	fmt.Println("\n--- 等待转账确认 ---")
+	status, err := utils.WaitForTransactionQuick(client, tx.Hash())
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("等待转账确认失败: %v", err)
+	}
+
+	if !status.Success {
+		// 添加详细的失败诊断
+		fmt.Printf("❌ 转账交易执行失败!\n")
+		fmt.Printf("   交易哈希: %s\n", tx.Hash().Hex())
+		fmt.Printf("   区块号: #%d\n", status.BlockNumber)
+		fmt.Printf("   Gas使用: %d\n", status.GasUsed)
+
+		// 检查可能的失败原因
+		fmt.Println("\n--- 失败原因诊断 ---")
+
+		// 1. 检查发送方余额
+		senderBalance, err := instance.BalanceOf(&bind.CallOpts{}, fromAddress)
+		if err == nil {
+			fmt.Printf("发送方代币余额: %s\n", senderBalance.String())
+			if senderBalance.Cmp(tokenAmount) < 0 {
+				fmt.Printf("❌ 余额不足! 需要: %s, 当前: %s\n", tokenAmount.String(), senderBalance.String())
+			} else {
+				fmt.Printf("✓ 余额充足: %s >= %s\n", senderBalance.String(), tokenAmount.String())
+			}
+		}
+
+		// 2. 检查合约状态
+		paused, err := instance.Paused(&bind.CallOpts{})
+		if err == nil {
+			if paused {
+				fmt.Printf("❌ 合约已暂停!\n")
+			} else {
+				fmt.Printf("✓ 合约未暂停\n")
+			}
+		}
+
+		return common.Hash{}, fmt.Errorf("转账交易执行失败 - 请查看上述诊断信息")
+	}
+
+	fmt.Printf("✅ 转账已确认!\n")
+	fmt.Printf("   区块号: #%d\n", status.BlockNumber)
+	fmt.Printf("   Gas使用: %d\n", status.GasUsed)
+
+	// 12. 验��转账结果
+	fmt.Println("\n--- 验证转账结果 ---")
+
+	// 查询转账后余额
+	senderBalance, err := instance.BalanceOf(&bind.CallOpts{}, fromAddress)
+	if err == nil {
+		fmt.Printf("✓ 发送方余额: %s\n", senderBalance.String())
+	}
+
+	receiverBalance, err := instance.BalanceOf(&bind.CallOpts{}, toAddress)
+	if err == nil {
+		fmt.Printf("✓ 接收方余额: %s\n", receiverBalance.String())
+	}
 
 	return tx.Hash(), nil
 }
