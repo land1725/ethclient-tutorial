@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -100,8 +101,8 @@ func TransferERC20WithABI(client *ethclient.Client, privateKeyHex string, toAddr
 	auth.GasTipCap = tipCap
 	auth.GasFeeCap = gasFeeCap
 
-	// 9. 估算Gas
-	gasLimit, err := estimateTransferGas(client, instance, fromAddress, toAddress, tokenAmount)
+	// 9. 估算Gas (重用auth对象)
+	gasLimit, err := estimateTransferGas(client, instance, fromAddress, toAddress, tokenAmount, auth)
 	if err != nil {
 		auth.GasLimit = 60000 // ERC20转账默认Gas限制
 		fmt.Printf("Warning: Gas估算失败，使用默认值: %d\n", auth.GasLimit)
@@ -125,7 +126,7 @@ func TransferERC20WithABI(client *ethclient.Client, privateKeyHex string, toAddr
 }
 
 // estimateTransferGas 估算ERC20转账所需的Gas
-func estimateTransferGas(client *ethclient.Client, instance *contracts.MYERC20, from, to common.Address, amount *big.Int) (uint64, error) {
+func estimateTransferGas(client *ethclient.Client, instance *contracts.MYERC20, from, to common.Address, amount *big.Int, auth *bind.TransactOpts) (uint64, error) {
 	// 使用合约绑定的ABI来生成调用数据进行Gas估算
 	callOpts := &bind.CallOpts{
 		From: from,
@@ -142,7 +143,41 @@ func estimateTransferGas(client *ethclient.Client, instance *contracts.MYERC20, 
 		return 0, fmt.Errorf("余额不足: 需要 %s, 当前 %s", amount.String(), balance.String())
 	}
 
-	// 返回ERC20转账的标准Gas估算
-	// 一般ERC20 transfer需要21000(基础) + 20000(合约调用) + 额外开销
-	return 60000, nil
+	// 1. 创建NoSend模式的授权对象
+	noSendAuth := *auth
+	noSendAuth.NoSend = true
+
+	// 2. 使用合约实例生成未签名的交易
+	tx, err := instance.Transfer(&noSendAuth, to, amount)
+	if err != nil {
+		return 0, fmt.Errorf("生成转账交易数据失败: %v", err)
+	}
+
+	// 3. 创建CallMsg用于估算
+	msg := ethereum.CallMsg{
+		From:  from,
+		To:    tx.To(),
+		Value: tx.Value(), // 应该是0
+		Data:  tx.Data(),
+	}
+
+	// 4. 实际估算Gas
+	gasLimit, err := client.EstimateGas(context.Background(), msg)
+	if err != nil {
+		// 如果估算失败，返回默认值
+		fmt.Printf("Warning: Gas估算失败，使用默认ERC20转账Gas: %v\n", err)
+		return 60000, nil
+	}
+
+	// 为估算的Gas添加20%的安全缓冲
+	finalGas := gasLimit + (gasLimit * 20 / 100)
+
+	// 确保Gas不低于最小值
+	const minERC20Gas = 50000
+	if finalGas < minERC20Gas {
+		finalGas = minERC20Gas
+	}
+
+	fmt.Printf("✓ 实际估算Gas: %d, 添加缓冲后: %d\n", gasLimit, finalGas)
+	return finalGas, nil
 }
