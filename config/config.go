@@ -11,7 +11,7 @@ import (
 
 // Config 配置结构体
 type Config struct {
-	InfuraProjectID      string
+	AlchemyAPIKey        string
 	EthereumNetwork      string
 	EthereumWSURL        string
 	EthereumHTTPURL      string
@@ -36,15 +36,15 @@ func LoadConfig() *Config {
 	}
 
 	config := &Config{
-		InfuraProjectID:      getEnv("INFURA_PROJECT_ID", ""),
-		EthereumNetwork:      getEnv("ETHEREUM_NETWORK", "mainnet"),
-		EthereumWSURL:        getEnv("ETHEREUM_WS_URL", "wss://mainnet.infura.io/ws/v3/"),
-		EthereumHTTPURL:      getEnv("ETHEREUM_HTTP_URL", "https://mainnet.infura.io/v3/"),
+		AlchemyAPIKey:        getEnv("ALCHEMY_API_KEY", ""),
+		EthereumNetwork:      getEnv("ETHEREUM_NETWORK", ""),
+		EthereumWSURL:        getEnv("ETHEREUM_WS_URL", ""),
+		EthereumHTTPURL:      getEnv("ETHEREUM_HTTP_URL", ""),
 		TestPrivateKey:       getEnv("TEST_PRIVATE_KEY", ""),
-		TestRecipientAddress: getEnv("TEST_RECIPIENT_ADDRESS", "0x742d35Cc6634C0532925a3b8D4C9db96C5C7F4C1"),
+		TestRecipientAddress: getEnv("TEST_RECIPIENT_ADDRESS", ""),
 		ContractAddress:      getEnv("CONTRACT_ADDRESS", ""),
 		ContractABIPath:      getEnv("CONTRACT_ABI_PATH", "./contracts/abi/"),
-		DefaultGasLimit:      getEnvAsUint64("DEFAULT_GAS_LIMIT", 21000),
+		DefaultGasLimit:      getEnvAsUint64("DEFAULT_GAS_LIMIT", 0),
 		GasPriceMultiplier:   getEnvAsFloat64("GAS_PRICE_MULTIPLIER", 1.1),
 		LogLevel:             getEnv("LOG_LEVEL", "info"),
 		LogOutput:            getEnv("LOG_OUTPUT", "console"),
@@ -54,26 +54,35 @@ func LoadConfig() *Config {
 	return config
 }
 
-// GetEthereumURL 获取完整的以太坊连接URL
+// GetEthereumURL 获取完整的以太坊连接URL（优先使用HTTP连接）
 func (c *Config) GetEthereumURL() string {
-	if c.InfuraProjectID == "" {
-		log.Fatal("INFURA_PROJECT_ID is required in .env file")
+	if c.AlchemyAPIKey == "" {
+		log.Fatal("ALCHEMY_API_KEY is required in .env file")
 	}
-	return c.EthereumWSURL + c.InfuraProjectID
+	// 优先使用HTTP连接，因为它更稳定
+	return c.EthereumHTTPURL + c.AlchemyAPIKey
+}
+
+// GetWebSocketURL 获取WebSocket连接URL（用于需要实时订阅的功能）
+func (c *Config) GetWebSocketURL() string {
+	if c.AlchemyAPIKey == "" {
+		log.Fatal("ALCHEMY_API_KEY is required in .env file")
+	}
+	return c.EthereumWSURL + c.AlchemyAPIKey
 }
 
 // GetHTTPURL 获取HTTP连接URL
 func (c *Config) GetHTTPURL() string {
-	if c.InfuraProjectID == "" {
-		log.Fatal("INFURA_PROJECT_ID is required in .env file")
+	if c.AlchemyAPIKey == "" {
+		log.Fatal("ALCHEMY_API_KEY is required in .env file")
 	}
-	return c.EthereumHTTPURL + c.InfuraProjectID
+	return c.EthereumHTTPURL + c.AlchemyAPIKey
 }
 
 // ValidateConfig 验证配置
 func (c *Config) ValidateConfig() error {
-	if c.InfuraProjectID == "" {
-		log.Println("Warning: INFURA_PROJECT_ID not set - network functions will not work")
+	if c.AlchemyAPIKey == "" {
+		log.Println("Warning: ALCHEMY_API_KEY not set - network functions will not work")
 	}
 	if c.TestPrivateKey == "" {
 		log.Println("Warning: TEST_PRIVATE_KEY not set - transfer functions will not work")

@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"ethclient_tutorial/block_query"
+	"ethclient_tutorial/block_subscription"
 	"ethclient_tutorial/config"
 	"ethclient_tutorial/eth_transfer"
 	"ethclient_tutorial/receipt_query"
@@ -31,16 +32,24 @@ func main() {
 	walletDemo()
 
 	// 检查是否配置了API密钥
-	if cfg.InfuraProjectID == "" {
+	if cfg.AlchemyAPIKey == "" {
 		fmt.Println("\n注意：区块查询、交易查询等功能需要真实的以太坊网络连接")
-		fmt.Println("请在 .env 文件中设置 INFURA_PROJECT_ID 来启用网络功能。")
+		fmt.Println("请在 .env 文件中设置 ALCHEMY_API_KEY 来启用网络功能。")
 		fmt.Println("示例:")
-		fmt.Println("  INFURA_PROJECT_ID=your_project_id_here")
+		fmt.Println("  ALCHEMY_API_KEY=your_api_key_here")
 		return
 	}
 
 	// 初始化以太坊客户端
 	fmt.Printf("\n2. 连接到以太坊网络 (%s)...\n", cfg.EthereumNetwork)
+
+	// 添加调试信息
+	fmt.Printf("🔍 调试信息:\n")
+	fmt.Printf("   Alchemy API Key: %s\n", cfg.AlchemyAPIKey)
+	fmt.Printf("   HTTP URL: %s\n", cfg.GetHTTPURL())
+	fmt.Printf("   WebSocket URL: %s\n", cfg.GetWebSocketURL())
+	fmt.Printf("   完整连接URL: %s\n", cfg.GetEthereumURL())
+
 	client, err := ethclient.Dial(cfg.GetEthereumURL())
 	if err != nil {
 		log.Printf("Failed to connect to Ethereum network: %v", err)
@@ -49,13 +58,17 @@ func main() {
 	}
 	defer client.Close()
 
-	fmt.Println("✅ 成功连接到以太坊网络!")
+	fmt.Println("✅ 成功连接到��太坊网络!")
 
 	// 网络功能演示
 	fmt.Println("\n3. 网络功能演示:")
 	blockQueryDemo(client)
 	transactionQueryDemo(client)
 	receiptQueryDemo(client)
+
+	// 区块订阅演示
+	fmt.Println("\n4. 区块订阅演示:")
+	blockSubscriptionDemo(client)
 
 	// 只有配置了私钥才演示转账功能
 	if cfg.TestPrivateKey != "" {
@@ -125,7 +138,7 @@ func erc20TransferDemo(client *ethclient.Client, cfg *config.Config) {
 
 	// 使用原来的手动构造交易方式
 	fmt.Println("\n=== 方式1: 手动构造ERC20转账交易 ===")
-	txHash1, err := token_transfer.TransferERC20WithAmount(client, cfg.TestPrivateKey, toAddress, erc20Address, 10, 18) // 添加decimals参数
+	txHash1, err := token_transfer.TransferERC20WithAmount(client, cfg.TestPrivateKey, toAddress, erc20Address, 10, 18) // 添���decimals参数
 	if err != nil {
 		log.Printf("手动构造ERC20转账失败: %v", err)
 	} else {
@@ -147,14 +160,7 @@ func checkRecipientTokenBalance(client *ethclient.Client, cfg *config.Config) {
 	recipientAddress := common.HexToAddress(cfg.TestRecipientAddress)
 
 	// 获取ERC20合约地址
-	var erc20Address common.Address
-	if cfg.ContractAddress == "" {
-		// 使用交易中实际使用的GLD代币合约地址
-		erc20Address = common.HexToAddress("0x38a62fbf3373325D2FCE9692749ae6Bc35ac31A2") // GLD合约地址
-		fmt.Printf("使用默认GLD合约地址: %s\n", erc20Address.Hex())
-	} else {
-		erc20Address = common.HexToAddress(cfg.ContractAddress)
-	}
+	var erc20Address = common.HexToAddress(cfg.ContractAddress)
 
 	fmt.Printf("查询地址: %s\n", recipientAddress.Hex())
 	fmt.Printf("代币合约: %s\n", erc20Address.Hex())
@@ -166,4 +172,24 @@ func checkRecipientTokenBalance(client *ethclient.Client, cfg *config.Config) {
 // WeiToEther 将Wei转换为ETH单位
 func WeiToEther(wei *big.Int) *big.Float {
 	return new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(1e18))
+}
+
+// blockSubscriptionDemo 区块订阅演示
+func blockSubscriptionDemo(client *ethclient.Client) {
+	fmt.Println("=== 区块订阅演示 ===")
+
+	// 区块订阅需要WebSocket连接，重新创建WebSocket客户端
+	cfg := config.GlobalConfig
+	wsClient, err := ethclient.Dial(cfg.GetWebSocketURL())
+	if err != nil {
+		log.Printf("WebSocket��接失败: %v", err)
+		fmt.Println("⚠️ 区块订阅需要WebSocket连接，跳过订阅演示")
+		return
+	}
+	defer wsClient.Close()
+
+	// 订阅并等待下一个新区块
+	fmt.Println("\n--- 监听下一个新区块 ---")
+	block := block_subscription.BlockSubscription(wsClient)
+	fmt.Printf("✅ 成功接收到新区块: #%d\n", block.NumberU64())
 }
