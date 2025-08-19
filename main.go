@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ethclient_tutorial/task2"
 	"fmt"
 	"log"
 	"math/big"
@@ -17,6 +18,7 @@ import (
 	"ethclient_tutorial/contract_events"
 	"ethclient_tutorial/eth_transfer"
 	"ethclient_tutorial/receipt_query"
+	"ethclient_tutorial/task1"
 	"ethclient_tutorial/token_balance"
 	"ethclient_tutorial/token_transfer"
 	"ethclient_tutorial/transaction_query"
@@ -63,6 +65,10 @@ func main() {
 	defer client.Close()
 
 	fmt.Println("✅ 成功连接到��太坊网络!")
+	//任务1 查询区块信息
+	task1blockQuery(client)
+	//任务1 转账ETH
+	task1EthTransfer(client, cfg)
 
 	// 网络功能演示
 	fmt.Println("\n3. 网络功能演示:")
@@ -86,6 +92,11 @@ func main() {
 
 		// 只有合约部署成功才进行ERC20相关操作
 		if deployedSuccess {
+			//任务2 查询发行代币总量
+			fmt.Println("\n=== 查询发行代币总量 ===")
+			getErc20TotalSupply(client, deployedContractAddress)
+			// 代币转账演示
+			fmt.Println("\n=== 代币转账演示 ===")
 			fmt.Println("\n=== 使用新部署的合约进行ERC20操作 ===")
 			erc20TransferDemo(client, cfg, deployedContractAddress)
 
@@ -98,6 +109,24 @@ func main() {
 	} else {
 		fmt.Println("\n注意：要演示转账功能，请在 .env 文件中设置 TEST_PRIVATE_KEY")
 	}
+}
+func task1blockQuery(client *ethclient.Client) {
+	//blockNum := uint64(15537394)
+	//block := block_query.GetBlockByNumber(client, blockNum)
+	task1.QueryBlockByNum(client, nil)
+}
+func task1EthTransfer(client *ethclient.Client, cfg *config.Config) {
+	toAddress := common.HexToAddress(cfg.TestRecipientAddress)
+
+	fmt.Printf("准备从配置的私钥地址转账 0.001 ETH 到 %s\n", cfg.TestRecipientAddress)
+	fmt.Println("注意：这只是演示，请确保使用测试网络和测试ETH!")
+
+	txHash, err := task1.TransferETH(client, cfg.TestPrivateKey, toAddress, 0.001) // 转0.001 ETH
+	if err != nil {
+		log.Printf("ETH transfer failed: %v", err)
+		return
+	}
+	fmt.Printf("✅ ETH转账成功! TX Hash: %s\n", txHash.Hex())
 }
 
 func blockQueryDemo(client *ethclient.Client) {
@@ -137,7 +166,24 @@ func ethTransferDemo(client *ethclient.Client, cfg *config.Config) {
 	}
 	fmt.Printf("✅ ETH转账成功! TX Hash: %s\n", txHash.Hex())
 }
+func getErc20TotalSupply(client *ethclient.Client, deployedContractAddress common.Address) {
 
+	// 获取ERC20合约地址
+	var erc20Address common.Address
+
+	erc20Address = deployedContractAddress
+	fmt.Printf("✓ 使用部署的ERC20合约地址: %s\n", erc20Address.Hex())
+
+	// 使用基于ABI绑定的新方式
+	fmt.Println("\n=== 方式2: 基于ABI绑定的ERC20转账 (EIP-1559) ===")
+	totalSupply, err := task2.GetTotalSupply(client, erc20Address)
+	if err != nil {
+		log.Printf("获取总供应量失败: %v", err)
+	} else {
+		fmt.Printf("✅ 总供应量: %s\n", totalSupply.String())
+	}
+
+}
 func erc20TransferDemo(client *ethclient.Client, cfg *config.Config, deployedContractAddress common.Address) {
 	toAddress := common.HexToAddress(cfg.TestRecipientAddress)
 	//打印接受地址
