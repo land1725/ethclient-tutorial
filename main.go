@@ -166,6 +166,15 @@ func erc20TransferDemo(client *ethclient.Client, cfg *config.Config, deployedCon
 	} else {
 		fmt.Printf("✅ ABI绑定ERC20转账成功! TX Hash: %s\n", txHash2.Hex())
 	}
+
+	// 使用基于纯ABI文件的新方式
+	fmt.Println("\n=== 方式3: 基于纯ABI文件的ERC20转账 (EIP-1559) ===")
+	txHash3, err := token_transfer.TransferERC20WithABIFile(client, cfg.TestPrivateKey, toAddress, erc20Address, 20)
+	if err != nil {
+		log.Printf("纯ABI文件ERC20转账失败: %v", err)
+	} else {
+		fmt.Printf("✅ 纯ABI文件ERC20转账成功! TX Hash: %s\n", txHash3.Hex())
+	}
 }
 
 // checkRecipientTokenBalance 查询接收地址的代币余额
