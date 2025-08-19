@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	//"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -12,6 +14,7 @@ import (
 	"ethclient_tutorial/block_subscription"
 	"ethclient_tutorial/config"
 	"ethclient_tutorial/contract_deployment"
+	"ethclient_tutorial/contract_events"
 	"ethclient_tutorial/eth_transfer"
 	"ethclient_tutorial/receipt_query"
 	"ethclient_tutorial/token_balance"
@@ -71,7 +74,7 @@ func main() {
 	fmt.Println("\n4. 区块订阅演示:")
 	blockSubscriptionDemo(client)
 
-	// 只有配置了私钥才演示转账功能
+	// 只有配置了私钥才�����示转账功能
 	if cfg.TestPrivateKey != "" {
 		// 合约部署演示
 		fmt.Println("\n5. 合约部署演示:")
@@ -234,7 +237,48 @@ func contractDeploymentDemo(client *ethclient.Client, cfg *config.Config) (commo
 	fmt.Printf("   合约地址: %s\n", contractAddress.Hex())
 	fmt.Printf("   部署交易哈希: %s\n", txHash.Hex())
 
-	// 更新配置中的合约地址以供后续使用
+	// 更新配置中��合约地址以供后续使用
 	fmt.Printf("📝 建议将合约地址更新到 .env 文件中的 CONTRACT_ADDRESS\n")
+
+	// 启动事件监听
+	fmt.Println("\n8. 启动合约事件监听:")
+	startEventWatching(client, contractAddress)
+
 	return contractAddress, true
+}
+
+// startEventWatching 启动事件监听
+func startEventWatching(client *ethclient.Client, contractAddress common.Address) *contract_events.EventWatcher {
+	// 创建WebSocket客户端用于事件监听
+	cfg := config.GlobalConfig
+	wsClient, err := ethclient.Dial(cfg.GetWebSocketURL())
+	if err != nil {
+		log.Printf("❌ 创建WebSocket客户端失败: %v", err)
+		fmt.Println("⚠️ 事件监听需要WebSocket连接，跳过事件监听")
+		return nil
+	}
+
+	// 启动事件监听
+	watcher, err := contract_events.WatchContractEvents(wsClient, contractAddress)
+	if err != nil {
+		log.Printf("❌ 启动事件监听失败: %v", err)
+		wsClient.Close()
+		return nil
+	}
+
+	fmt.Printf("✅ 事件监听已启动，监听合约: %s\n", contractAddress.Hex())
+	fmt.Println("📢 后续的转账操作将触发相应的事件，你可以在输出中看到事件详情")
+
+	// 启动协程处理事件监听的生命周期
+	go func() {
+		defer wsClient.Close()
+		defer watcher.Stop()
+
+		// 监听程序退出信号或其他停止条件
+		// 这里简化处理，实际应用中可以监听系统信号
+		time.Sleep(2 * time.Minute) // 监听2分钟后自动停止
+		fmt.Println("\n⏰ 事件监听时间到，正在停止...")
+	}()
+
+	return watcher
 }
